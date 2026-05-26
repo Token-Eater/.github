@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drivelog"
+version = "0.1.0"
+description = "Turn iPhone learner-driver app screenshots into printable ACT log book pages."
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "pyyaml>=6.0",
+    "reportlab>=4.2",
+    "pillow>=10.3",
+]
+
+[project.optional-dependencies]
+mac = ["ocrmac>=1.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+drivelog = "drivelog.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

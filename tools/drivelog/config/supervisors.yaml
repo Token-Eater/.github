@@ -1,0 +1,13 @@
+# Supervising drivers. The iPhone app only stores initials/short names;
+# the log book columns SD NAME and SD LICENCE need the full record.
+#
+# - aliases: every form the app might show ("O M", "Oliver M", etc.)
+# - signature_image: optional path to a PNG that gets stamped into the
+#   SD SIGNATURE column. Leave null to hand-sign on paper.
+
+- full_name: "Oliver Mitchell"
+  licence_number: "12345678"
+  aliases:
+    - "O M"
+    - "Oliver M"
+  signature_image: null
