@@ -95,9 +95,27 @@ def test_parse_detail_raises_on_missing_fields():
         raise AssertionError("expected ParseError")
 
 
-def test_parse_conditions_leaves_selection_unknown():
+def test_parse_conditions_without_image_leaves_selection_unknown():
     cond = parse_conditions(SAMPLE_CONDITIONS)
     assert cond.weather == "Unknown"
     assert cond.road_type == "Unknown"
     assert cond.traffic == "Unknown"
     assert cond.feel == "Unknown"
+
+
+def test_extract_notes_below_label():
+    from drivelog.parse import _extract_notes
+    tokens = _tokens([
+        (0, ["2 May 2026 at 9:31 am"]),
+        (1, ["How did the practice feel?"]),
+        (2, ["Awful", "Bad", "Meh", "Good", "Great"]),
+        (3, ["Notes"]),
+        (4, ["Roundabout", "felt", "tight"]),
+        (5, ["good", "stop", "at", "lights"]),
+    ])
+    assert _extract_notes(tokens) == "Roundabout felt tight good stop at lights"
+
+
+def test_extract_notes_empty_when_no_label():
+    from drivelog.parse import _extract_notes
+    assert _extract_notes(_tokens([(0, ["2 May 2026 at 9:31 am"])])) == ""

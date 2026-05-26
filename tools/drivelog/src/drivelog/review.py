@@ -66,7 +66,13 @@ def _show(console: Console, trip: Trip) -> None:
     )
     tbl.add_row("Odometer", f"{trip.start_odometer:,} → {trip.end_odometer:,} ({trip.km()} km)")
     tbl.add_row("Conditions", f"weather={trip.weather} road={trip.road_type} traffic={trip.traffic} feel={trip.feel}")
+    if trip.notes:
+        tbl.add_row("Notes", trip.notes)
     console.print(tbl)
+    console.print(
+        "[dim]Captured: road type / traffic / feel / notes are stored but not "
+        "printed (ACT paper book has no columns for them).[/dim]"
+    )
     console.print("[a]pprove  [s]kip  [d]iscard", style="dim")
 
 

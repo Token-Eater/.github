@@ -46,7 +46,11 @@ drivelog status
 ## What goes on each screenshot
 
 - **Detail screen**: must show date header, Day/Night/Total summary, Vehicle, Supervisor, Start/End Suburb, Start/End Time, Start/End Odometer, and the "Signed off by …" line.
-- **Conditions screen**: the weather/road/traffic/feel selectors and Notes. The selected option is detected during the review step (OCR can't read icon highlight state).
+- **Conditions screen**: the weather / road / traffic / feel selectors and Notes. Selection is auto-detected by sampling pixels above each option label (lit icons are light blue vs dark grey for unselected). If the result is ambiguous you'll be asked to confirm during `review`.
+
+## What's stored vs printed
+
+Drivelog captures all of `weather`, `road_type`, `traffic`, `feel`, and `notes` into `trips.json` and shows them in `review`. Only `weather` is printed into the WEATHER CONDITIONS column of the ACT paper book (which has no columns for the rest). The extra fields are kept against the chance that ACT moves to a digital log book — they'll already be in your data.
 
 ## Mixed day/night trips
 

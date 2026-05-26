@@ -4,17 +4,18 @@ The detail screen is a vertical list of "Label | Value" rows. We find each
 known label by text, then take everything to its right on the same Y-band
 as the value.
 
-The conditions screen is harder: selection state is visual (highlighted
-blue circle vs grey), which OCR cannot read. parse_conditions captures
-the header timestamp and option labels, but flags the trip needs_review
-so the user picks the selected option during the review step. A future
-upgrade can sample pixel colour under each option to auto-detect.
+The conditions screen has icon-based selectors whose state is colour-only
+(light-blue circle = selected, dark grey = unselected). OCR returns the
+option text positions; iconselect.detect_selected samples pixels above
+each label to figure out which is lit. If image_path isn't supplied the
+selection is left as "Unknown" for the review step.
 """
 
 from __future__ import annotations
 
 import re
 from datetime import datetime
+from pathlib import Path
 
 from .config import TZ
 from .model import TripConditions, TripDetail
@@ -149,23 +150,40 @@ TRAFFIC_OPTIONS = ("Light", "Moderate", "Heavy")
 FEEL_OPTIONS = ("Awful", "Bad", "Meh", "Good", "Great")
 
 
-def parse_conditions(tokens: list[OcrToken]) -> TripConditions:
-    """Extract the header timestamp. Selection is left as 'Unknown' for the
-    review step to fill in (cannot reliably OCR icon highlight state)."""
-    header = parse_header_timestamp(tokens)
-    text_blob = " ".join(t.text for t in tokens)
+def parse_conditions(tokens: list[OcrToken], image_path: Path | None = None) -> TripConditions:
+    """Extract header timestamp, selection (via pixel sampling), and notes.
 
-    # Pull Notes if any text follows the "Notes" label.
-    notes = ""
-    if "Notes" in text_blob:
-        idx = text_blob.index("Notes")
-        notes = text_blob[idx + len("Notes"):].strip()
+    If image_path is provided, sample icon regions to detect which option
+    is selected. Otherwise leave selections as "Unknown" for review.
+    """
+    header = parse_header_timestamp(tokens)
+
+    if image_path is not None:
+        from .iconselect import detect_selected
+        weather = detect_selected(image_path, WEATHER_OPTIONS, tokens) or "Unknown"
+        road_type = detect_selected(image_path, ROAD_OPTIONS, tokens) or "Unknown"
+        traffic = detect_selected(image_path, TRAFFIC_OPTIONS, tokens) or "Unknown"
+        feel = detect_selected(image_path, FEEL_OPTIONS, tokens) or "Unknown"
+    else:
+        weather = road_type = traffic = feel = "Unknown"
+
+    notes = _extract_notes(tokens)
 
     return TripConditions(
         header_timestamp=header,
-        weather="Unknown",
-        road_type="Unknown",
-        traffic="Unknown",
-        feel="Unknown",
+        weather=weather,
+        road_type=road_type,
+        traffic=traffic,
+        feel=feel,
         notes=notes,
     )
+
+
+def _extract_notes(tokens: list[OcrToken]) -> str:
+    """Anything below the 'Notes' label, joined into one string."""
+    notes_token = next((t for t in tokens if t.text.strip().lower() == "notes"), None)
+    if notes_token is None:
+        return ""
+    below = [t for t in tokens if t.y_centre > notes_token.y_centre + 0.005]
+    below.sort(key=lambda t: (round(t.y_centre, 3), t.x_centre))
+    return " ".join(t.text for t in below).strip()

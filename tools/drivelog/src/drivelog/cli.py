@@ -65,7 +65,7 @@ def ingest(
             if kind == ScreenKind.DETAIL:
                 shots.append(IngestedScreenshot(path=img, kind=kind, detail=parse_detail(tokens)))
             elif kind == ScreenKind.CONDITIONS:
-                shots.append(IngestedScreenshot(path=img, kind=kind, conditions=parse_conditions(tokens)))
+                shots.append(IngestedScreenshot(path=img, kind=kind, conditions=parse_conditions(tokens, image_path=img)))
             else:
                 console.print(f"[yellow]Could not classify {img.name}[/yellow]")
                 shots.append(IngestedScreenshot(path=img, kind=kind))
