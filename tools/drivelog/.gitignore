@@ -1,0 +1,10 @@
+data/intake/
+data/archive/
+data/pending/
+out/
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+build/
+dist/
