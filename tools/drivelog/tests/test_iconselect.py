@@ -25,14 +25,26 @@ def _slot_x(i: int) -> int:
     return int((i + 0.5) * IMG_W / len(OPTIONS))
 
 
-def _make_image(selected_index: int, path: Path) -> None:
+def _make_image(selected_index: int, path: Path, glyph: bool = False) -> None:
     img = Image.new("RGB", (IMG_W, IMG_H), (0, 0, 0))
     draw = ImageDraw.Draw(img)
     for i, _ in enumerate(OPTIONS):
         cx = _slot_x(i)
         colour = (130, 175, 230) if i == selected_index else (50, 50, 55)
         draw.ellipse((cx - 50, ICON_Y_PX - 50, cx + 50, ICON_Y_PX + 50), fill=colour)
+        if glyph:
+            # Mimic the white icon glyph (sun rays / cloud / snowflake etc).
+            draw.ellipse((cx - 25, ICON_Y_PX - 25, cx + 25, ICON_Y_PX + 25), fill=(255, 255, 255))
     img.save(path)
+
+
+@pytest.mark.parametrize("selected_index", [0, 2, 4])
+def test_detect_selected_finds_lit_icon_with_white_glyph(tmp_path, selected_index):
+    """Brightness alone would fail here because the white glyph dominates the box."""
+    img_path = tmp_path / f"glyph-{selected_index}.png"
+    _make_image(selected_index, img_path, glyph=True)
+    tokens = _tokens_for_labels()
+    assert detect_selected(img_path, OPTIONS, tokens) == OPTIONS[selected_index]
 
 
 def _tokens_for_labels() -> list[OcrToken]:

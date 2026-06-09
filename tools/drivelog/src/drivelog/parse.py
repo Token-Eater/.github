@@ -224,11 +224,24 @@ def parse_conditions(tokens: list[OcrToken], image_path: Path | None = None) -> 
     )
 
 
+_TAB_BAR_LABELS = {"trips", "learn", "logbook", "settings"}
+
+
 def _extract_notes(tokens: list[OcrToken]) -> str:
-    """Anything below the 'Notes' label, joined into one string."""
+    """Anything below the 'Notes' label, joined into one string.
+
+    Skips the iOS bottom tab bar (Trips / Learn / Logbook / Settings) and
+    anything in the bottom 8% of the screen so the navigation chrome
+    doesn't leak into captured notes.
+    """
     notes_token = next((t for t in tokens if t.text.strip().lower() == "notes"), None)
     if notes_token is None:
         return ""
-    below = [t for t in tokens if t.y_centre > notes_token.y_centre + 0.005]
+    below = [
+        t for t in tokens
+        if t.y_centre > notes_token.y_centre + 0.005
+        and t.text.strip().lower() not in _TAB_BAR_LABELS
+        and t.y_centre < 0.93
+    ]
     below.sort(key=lambda t: (round(t.y_centre, 3), t.x_centre))
     return " ".join(t.text for t in below).strip()

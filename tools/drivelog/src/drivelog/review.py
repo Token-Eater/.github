@@ -31,7 +31,7 @@ def review_pending(paths: Paths) -> int:
             trip = _fill_conditions(console, trip)
 
         choice = Prompt.ask(
-            "[bold]Action[/bold]",
+            "Action (a=approve, s=skip, d=discard)",
             choices=["a", "s", "d"],
             default="a",
             show_choices=True,
@@ -73,7 +73,12 @@ def _show(console: Console, trip: Trip) -> None:
         "[dim]Captured: road type / traffic / feel / notes are stored but not "
         "printed (ACT paper book has no columns for them).[/dim]"
     )
-    console.print("[a]pprove  [s]kip  [d]iscard", style="dim")
+    console.print(
+        "Actions: [bold]a[/bold]=approve into trips.json   "
+        "[bold]s[/bold]=skip (leave in pending)   "
+        "[bold]d[/bold]=discard",
+        style="dim",
+    )
 
 
 def _fill_conditions(console: Console, trip: Trip) -> Trip:

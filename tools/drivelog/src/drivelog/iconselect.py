@@ -57,7 +57,13 @@ def detect_selected(
     options: tuple[str, ...],
     tokens: list[OcrToken],
 ) -> str | None:
-    """Return the option whose icon region is brightest, or None if undetectable."""
+    """Return the option whose icon background is most blue, or None if ambiguous.
+
+    The selected icon has a light-blue circle background; unselected are dark
+    grey. White icon glyphs (sun rays, cloud, snowflake, etc.) confuse a
+    plain brightness check, so we score by 'blueness' = B - (R+G)/2, which is
+    high for light blue, near zero for both grey and white.
+    """
     img = Image.open(image_path)
     scored: list[tuple[str, float]] = []
     for option in options:
@@ -65,14 +71,12 @@ def detect_selected(
         if token is None:
             continue
         r, g, b = _sample_above(img, token)
-        brightness = (r + g + b) / 3
-        scored.append((option, brightness))
+        blueness = b - (r + g) / 2
+        scored.append((option, blueness))
     if not scored:
         return None
     best_label, best_score = max(scored, key=lambda x: x[1])
-    # Require a meaningful gap between the brightest and the next: otherwise
-    # the screenshot is ambiguous and we should defer to the review step.
     others = [s for lbl, s in scored if lbl != best_label]
-    if others and best_score - max(others) < 20:
+    if others and best_score - max(others) < 15:
         return None
     return best_label
