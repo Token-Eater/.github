@@ -26,8 +26,10 @@ from .ocr import OcrToken
 
 ICON_OFFSET_RANGE = (0.02, 0.08)
 ICON_OFFSET_STEPS = 7
-SAMPLE_BOX_PX = 24
-SELECTED_GAP_THRESHOLD = 15
+SAMPLE_BOX_PX = 32
+SELECTED_GAP_THRESHOLD = 80
+PIXEL_BLUE_THRESHOLD = 30
+PIXEL_BRIGHTNESS_MIN = 120
 
 
 def _label_token(tokens: list[OcrToken], label: str) -> OcrToken | None:
@@ -66,8 +68,23 @@ def _label_token(tokens: list[OcrToken], label: str) -> OcrToken | None:
     return None
 
 
-def _blueness_above(img: Image.Image, token: OcrToken) -> float:
-    """Best blueness score in a vertical strip above the label's bbox."""
+def _is_pastel_blue(r: float, g: float, b: float) -> bool:
+    """True for the light selected-circle blue, false for dark raindrops, yellow suns, or white glyphs.
+
+    Combines hue (blue dominant) and brightness (must be light) so dark blues
+    inside unselected rain icons don't false-positive and yellow suns inside
+    selected weather icons don't subtract from the score.
+    """
+    return (b - (r + g) / 2) > PIXEL_BLUE_THRESHOLD and (r + g + b) / 3 > PIXEL_BRIGHTNESS_MIN
+
+
+def _blue_pixel_count(img: Image.Image, token: OcrToken) -> int:
+    """Best count of pastel-blue pixels in a vertical strip of sample boxes above the label.
+
+    Counting per-pixel decouples the selection signal from the icon glyph's
+    own colour: a yellow sun on a blue background still has lots of blue
+    pixels even though its mean is dragged down by the yellow.
+    """
     w, h = img.size
     cx_px = int(token.x_centre * w)
     label_top_topdown = 1.0 - (token.y + token.h)
@@ -75,7 +92,7 @@ def _blueness_above(img: Image.Image, token: OcrToken) -> float:
 
     half = SAMPLE_BOX_PX // 2
     lo, hi = ICON_OFFSET_RANGE
-    best = -float("inf")
+    best = 0
     for i in range(ICON_OFFSET_STEPS):
         offset_frac = lo + (hi - lo) * i / (ICON_OFFSET_STEPS - 1)
         icon_centre_y_px = label_top_px - int(offset_frac * h)
@@ -88,14 +105,17 @@ def _blueness_above(img: Image.Image, token: OcrToken) -> float:
         if box[2] <= box[0] or box[3] <= box[1]:
             continue
         region = img.crop(box).convert("RGB")
-        r, g, b = ImageStat.Stat(region).mean
-        blueness = b - (r + g) / 2
-        if blueness > best:
-            best = blueness
-    return best if best != -float("inf") else 0.0
+        data = region.tobytes()
+        count = sum(
+            1 for i in range(0, len(data), 3)
+            if _is_pastel_blue(data[i], data[i + 1], data[i + 2])
+        )
+        if count > best:
+            best = count
+    return best
 
 
-SELECTED_BLUENESS_MIN = 20.0
+SELECTED_BLUENESS_MIN = 120
 
 
 def detect_selected(
@@ -110,7 +130,7 @@ def detect_selected(
         token = _label_token(tokens, option)
         if token is None:
             continue
-        scored.append((option, _blueness_above(img, token)))
+        scored.append((option, _blue_pixel_count(img, token)))
     if not scored:
         return None
     best_label, best_score = max(scored, key=lambda x: x[1])
@@ -137,6 +157,6 @@ def detect_multiple_selected(
         token = _label_token(tokens, option)
         if token is None:
             continue
-        if _blueness_above(img, token) >= threshold:
+        if _blue_pixel_count(img, token) >= threshold:
             selected.append(option)
     return selected

@@ -60,6 +60,19 @@ def test_mixed_emits_two_rows_sharing_trip_id():
     assert night_row.total == timedelta(minutes=10)
     # Boundary: day finishes where night starts.
     assert day_row.finish_time == night_row.start_time
-    # Whole-trip odometer kept on each row (legal supplementary-sheet convention).
-    assert day_row.odometer_start == night_row.odometer_start == 1000
-    assert day_row.odometer_finish == night_row.odometer_finish == 1010
+
+
+def test_mixed_splits_km_proportional_to_time_summing_to_total():
+    """100 km / 60 min split 30+30 should give 50 km each (and never double-count)."""
+    trip = _trip(day=30, night=30)
+    rows = split_trip(trip, _sup())
+    day_row = next(r for r in rows if r.band == TimeBand.DAY)
+    night_row = next(r for r in rows if r.band == TimeBand.NIGHT)
+    # Day takes the first half of the odometer range, night takes the rest.
+    assert day_row.odometer_start == 1000
+    assert day_row.odometer_finish == night_row.odometer_start
+    assert night_row.odometer_finish == 1010
+    total_km = (day_row.odometer_finish - day_row.odometer_start) + (
+        night_row.odometer_finish - night_row.odometer_start
+    )
+    assert total_km == 10  # equals trip.end - trip.start - no double-counting
