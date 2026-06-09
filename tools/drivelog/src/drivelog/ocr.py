@@ -45,7 +45,7 @@ def ocr_image(path: Path) -> list[OcrToken]:
     raw = ocrmac.OCR(
         str(path),
         recognition_level="accurate",
-        language_preference=["en-AU", "en-US"],
+        language_preference=["en-US"],
     ).recognize()
 
     tokens = [
