@@ -92,7 +92,7 @@ def _fill_conditions(console: Console, trip: Trip) -> Trip:
     if trip.weather == "Unknown":
         trip.weather = Prompt.ask("Weather", choices=list(WEATHER_OPTIONS), default="Fine")
     if trip.road_type == "Unknown":
-        trip.road_type = Prompt.ask("Road type", choices=list(ROAD_OPTIONS), default="Quiet Street")
+        trip.road_type = _prompt_road_multi(console, "")
     if trip.traffic == "Unknown":
         trip.traffic = Prompt.ask("Traffic", choices=list(TRAFFIC_OPTIONS), default="Light")
     if trip.feel == "Unknown":
@@ -112,10 +112,7 @@ def _edit_conditions(console: Console, trip: Trip) -> Trip:
         "Weather", choices=list(WEATHER_OPTIONS),
         default=_default(trip.weather, WEATHER_OPTIONS, "Fine"),
     )
-    trip.road_type = Prompt.ask(
-        "Road type", choices=list(ROAD_OPTIONS),
-        default=_default(trip.road_type, ROAD_OPTIONS, "Quiet Street"),
-    )
+    trip.road_type = _prompt_road_multi(console, trip.road_type)
     trip.traffic = Prompt.ask(
         "Traffic", choices=list(TRAFFIC_OPTIONS),
         default=_default(trip.traffic, TRAFFIC_OPTIONS, "Light"),
@@ -127,3 +124,19 @@ def _edit_conditions(console: Console, trip: Trip) -> Trip:
     new_notes = Prompt.ask("Notes (Enter to keep current)", default=trip.notes)
     trip.notes = new_notes
     return trip
+
+
+def _prompt_road_multi(console: Console, current: str) -> str:
+    """Multi-select road type. Accepts comma-separated input; loops on invalid."""
+    default = current if current and current != "Unknown" else "Quiet Street"
+    while True:
+        raw = Prompt.ask(
+            f"Road types (comma-separated; options: {' | '.join(ROAD_OPTIONS)})",
+            default=default,
+        )
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        invalid = [p for p in parts if p not in ROAD_OPTIONS]
+        if invalid:
+            console.print(f"[red]Not valid road types: {invalid}. Try again.[/red]")
+            continue
+        return ", ".join(parts) if parts else "Unknown"

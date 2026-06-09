@@ -66,12 +66,15 @@ def _blueness_above(img: Image.Image, token: OcrToken) -> float:
     return best if best != -float("inf") else 0.0
 
 
+SELECTED_BLUENESS_MIN = 20.0
+
+
 def detect_selected(
     image_path: Path,
     options: tuple[str, ...],
     tokens: list[OcrToken],
 ) -> str | None:
-    """Return the option whose icon background is most blue, or None if ambiguous."""
+    """Single-select: return the most-blue option, or None if ambiguous."""
     img = Image.open(image_path)
     scored: list[tuple[str, float]] = []
     for option in options:
@@ -86,3 +89,25 @@ def detect_selected(
     if others and best_score - max(others) < SELECTED_GAP_THRESHOLD:
         return None
     return best_label
+
+
+def detect_multiple_selected(
+    image_path: Path,
+    options: tuple[str, ...],
+    tokens: list[OcrToken],
+    threshold: float = SELECTED_BLUENESS_MIN,
+) -> list[str]:
+    """Multi-select: every option whose icon background exceeds `threshold`.
+
+    Used for rows like 'What kind of roads did you drive on?' where the
+    user can tick more than one option.
+    """
+    img = Image.open(image_path)
+    selected: list[str] = []
+    for option in options:
+        token = _label_token(tokens, option)
+        if token is None:
+            continue
+        if _blueness_above(img, token) >= threshold:
+            selected.append(option)
+    return selected

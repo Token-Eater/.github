@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from drivelog.iconselect import detect_selected
+from drivelog.iconselect import detect_multiple_selected, detect_selected
 from drivelog.ocr import OcrToken
 
 
@@ -95,3 +95,34 @@ def test_detect_selected_missing_token_skipped(tmp_path):
     # Tokens for only some of the options - detector should still pick from what it sees.
     tokens = [t for t in _tokens_for_labels() if t.text in {"Snow", "Icy"}]
     assert detect_selected(img_path, OPTIONS, tokens) == "Snow"
+
+
+def _make_image_multi(selected_indices: set[int], path: Path) -> None:
+    img = Image.new("RGB", (IMG_W, IMG_H), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    for i, _ in enumerate(OPTIONS):
+        cx = _slot_x(i)
+        colour = (130, 175, 230) if i in selected_indices else (50, 50, 55)
+        draw.ellipse((cx - 50, ICON_Y_PX - 50, cx + 50, ICON_Y_PX + 50), fill=colour)
+    img.save(path)
+
+
+def test_detect_multiple_selected_returns_all_lit(tmp_path):
+    img_path = tmp_path / "multi.png"
+    _make_image_multi({0, 2, 4}, img_path)
+    result = detect_multiple_selected(img_path, OPTIONS, _tokens_for_labels())
+    assert set(result) == {OPTIONS[0], OPTIONS[2], OPTIONS[4]}
+
+
+def test_detect_multiple_selected_returns_empty_when_none_lit(tmp_path):
+    img_path = tmp_path / "none.png"
+    _make_image_multi(set(), img_path)
+    assert detect_multiple_selected(img_path, OPTIONS, _tokens_for_labels()) == []
+
+
+def test_detect_multiple_selected_returns_all_when_all_lit(tmp_path):
+    """User's real case: all five road types ticked."""
+    img_path = tmp_path / "all.png"
+    _make_image_multi(set(range(len(OPTIONS))), img_path)
+    result = detect_multiple_selected(img_path, OPTIONS, _tokens_for_labels())
+    assert set(result) == set(OPTIONS)

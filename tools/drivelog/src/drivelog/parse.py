@@ -204,9 +204,10 @@ def parse_conditions(tokens: list[OcrToken], image_path: Path | None = None) -> 
     header = parse_header_timestamp(tokens)
 
     if image_path is not None:
-        from .iconselect import detect_selected
+        from .iconselect import detect_multiple_selected, detect_selected
         weather = detect_selected(image_path, WEATHER_OPTIONS, tokens) or "Unknown"
-        road_type = detect_selected(image_path, ROAD_OPTIONS, tokens) or "Unknown"
+        road_list = detect_multiple_selected(image_path, ROAD_OPTIONS, tokens)
+        road_type = ", ".join(road_list) if road_list else "Unknown"
         traffic = detect_selected(image_path, TRAFFIC_OPTIONS, tokens) or "Unknown"
         feel = detect_selected(image_path, FEEL_OPTIONS, tokens) or "Unknown"
     else:
