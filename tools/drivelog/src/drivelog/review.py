@@ -31,12 +31,19 @@ def review_pending(paths: Paths) -> int:
             trip = _fill_conditions(console, trip)
 
         choice = Prompt.ask(
-            "Action (a=approve, s=skip, d=discard)",
-            choices=["a", "s", "d"],
+            "Action (a=approve, e=edit conditions then approve, s=skip, d=discard)",
+            choices=["a", "e", "s", "d"],
             default="a",
             show_choices=True,
         )
-        if choice == "a":
+        if choice == "e":
+            trip = _edit_conditions(console, trip)
+            trip.needs_review = False
+            trip.review_reasons = []
+            canonical[trip.trip_id] = trip
+            discard_pending(paths, trip.trip_id)
+            approved += 1
+        elif choice == "a":
             trip.needs_review = False
             trip.review_reasons = []
             canonical[trip.trip_id] = trip
@@ -74,14 +81,14 @@ def _show(console: Console, trip: Trip) -> None:
         "printed (ACT paper book has no columns for them).[/dim]"
     )
     console.print(
-        "Actions: [bold]a[/bold]=approve into trips.json   "
-        "[bold]s[/bold]=skip (leave in pending)   "
-        "[bold]d[/bold]=discard",
+        "Actions: [bold]a[/bold]=approve   [bold]e[/bold]=edit conditions then approve   "
+        "[bold]s[/bold]=skip (leave in pending)   [bold]d[/bold]=discard",
         style="dim",
     )
 
 
 def _fill_conditions(console: Console, trip: Trip) -> Trip:
+    """Prompt only for fields the detector returned as Unknown."""
     if trip.weather == "Unknown":
         trip.weather = Prompt.ask("Weather", choices=list(WEATHER_OPTIONS), default="Fine")
     if trip.road_type == "Unknown":
@@ -90,4 +97,33 @@ def _fill_conditions(console: Console, trip: Trip) -> Trip:
         trip.traffic = Prompt.ask("Traffic", choices=list(TRAFFIC_OPTIONS), default="Light")
     if trip.feel == "Unknown":
         trip.feel = Prompt.ask("Feel", choices=list(FEEL_OPTIONS), default="Good")
+    return trip
+
+
+def _edit_conditions(console: Console, trip: Trip) -> Trip:
+    """Prompt for every condition, defaulting to the currently-stored value.
+
+    Press Enter to keep what's there; type a new value to override.
+    """
+    def _default(value: str, options: tuple[str, ...], fallback: str) -> str:
+        return value if value in options else fallback
+
+    trip.weather = Prompt.ask(
+        "Weather", choices=list(WEATHER_OPTIONS),
+        default=_default(trip.weather, WEATHER_OPTIONS, "Fine"),
+    )
+    trip.road_type = Prompt.ask(
+        "Road type", choices=list(ROAD_OPTIONS),
+        default=_default(trip.road_type, ROAD_OPTIONS, "Quiet Street"),
+    )
+    trip.traffic = Prompt.ask(
+        "Traffic", choices=list(TRAFFIC_OPTIONS),
+        default=_default(trip.traffic, TRAFFIC_OPTIONS, "Light"),
+    )
+    trip.feel = Prompt.ask(
+        "Feel", choices=list(FEEL_OPTIONS),
+        default=_default(trip.feel, FEEL_OPTIONS, "Good"),
+    )
+    new_notes = Prompt.ask("Notes (Enter to keep current)", default=trip.notes)
+    trip.notes = new_notes
     return trip
