@@ -55,3 +55,17 @@ def resolve_supervisor(label: str, supervisors: list[Supervisor]) -> Supervisor 
         if s.matches(label):
             return s
     return None
+
+
+def append_supervisor(path: Path, supervisor: Supervisor) -> None:
+    """Append a new supervisor entry to supervisors.yaml, preserving existing ones."""
+    existing = yaml.safe_load(path.read_text()) if path.exists() else []
+    existing = existing or []
+    existing.append({
+        "full_name": supervisor.full_name,
+        "licence_number": supervisor.licence_number,
+        "aliases": supervisor.aliases,
+        "signature_image": supervisor.signature_image,
+    })
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(existing, sort_keys=False))

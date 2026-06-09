@@ -6,8 +6,8 @@ from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
-from .config import Paths
-from .model import Trip
+from .config import Paths, append_supervisor, load_supervisors, resolve_supervisor
+from .model import Supervisor, Trip
 from .parse import FEEL_OPTIONS, ROAD_OPTIONS, TRAFFIC_OPTIONS, WEATHER_OPTIONS
 from .store import discard_pending, load_pending, load_trips, save_trips
 
@@ -24,12 +24,20 @@ def review_pending(paths: Paths) -> int:
     approved = 0
     for trip in sorted(pending.values(), key=lambda t: t.header_timestamp):
         _show(console, trip)
+        _maybe_register_supervisor(console, trip, paths)
         if trip.review_reasons:
-            console.print("[yellow]Needs review:[/yellow]")
-            for r in trip.review_reasons:
-                console.print(f"  • {r}")
+            shown = [r for r in trip.review_reasons if "not in supervisors.yaml" not in r]
+            if shown:
+                console.print("[yellow]Needs review:[/yellow]")
+                for r in shown:
+                    console.print(f"  • {r}")
             trip = _fill_conditions(console, trip)
 
+        console.print(
+            "Actions: [bold]a[/bold]=approve   [bold]e[/bold]=edit conditions then approve   "
+            "[bold]s[/bold]=skip (leave in pending)   [bold]d[/bold]=discard",
+            style="dim",
+        )
         choice = Prompt.ask(
             "Action (a=approve, e=edit conditions then approve, s=skip, d=discard)",
             choices=["a", "e", "s", "d"],
@@ -80,11 +88,6 @@ def _show(console: Console, trip: Trip) -> None:
         "[dim]Captured: road type / traffic / feel / notes are stored but not "
         "printed (ACT paper book has no columns for them).[/dim]"
     )
-    console.print(
-        "Actions: [bold]a[/bold]=approve   [bold]e[/bold]=edit conditions then approve   "
-        "[bold]s[/bold]=skip (leave in pending)   [bold]d[/bold]=discard",
-        style="dim",
-    )
 
 
 def _fill_conditions(console: Console, trip: Trip) -> Trip:
@@ -124,6 +127,38 @@ def _edit_conditions(console: Console, trip: Trip) -> Trip:
     new_notes = Prompt.ask("Notes (Enter to keep current)", default=trip.notes)
     trip.notes = new_notes
     return trip
+
+
+def _maybe_register_supervisor(console: Console, trip: Trip, paths: Paths) -> None:
+    """If the trip's supervisor isn't in supervisors.yaml, offer to add them.
+
+    The SD licence number isn't shown on the iPhone trip detail screen, so
+    new supervisors need to be registered once. Append to supervisors.yaml
+    here so the next ingest resolves the licence automatically.
+    """
+    supervisors = load_supervisors(paths.supervisors_yaml)
+    if resolve_supervisor(trip.supervisor, supervisors):
+        return
+    console.print(
+        f"[yellow]Supervisor '{trip.supervisor}' is new — register them so their "
+        f"licence number prints in the SD LICENCE column.[/yellow]"
+    )
+    licence = Prompt.ask(
+        f"Licence number for {trip.supervisor} (Enter to skip)",
+        default="",
+    )
+    if not licence.strip():
+        console.print("[dim]Skipped — SD LICENCE will print blank for this trip.[/dim]")
+        return
+    append_supervisor(
+        paths.supervisors_yaml,
+        Supervisor(
+            full_name=trip.supervisor,
+            licence_number=licence.strip(),
+            aliases=[trip.supervisor],
+        ),
+    )
+    console.print(f"[green]Added '{trip.supervisor}' to supervisors.yaml[/green]")
 
 
 def _prompt_road_multi(console: Console, current: str) -> str:

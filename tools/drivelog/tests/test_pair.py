@@ -101,6 +101,17 @@ def test_pair_flags_daynight_mismatch():
     assert any("Day" in msg and "Total" in msg for _, msg in res.errors)
 
 
+def test_pair_tolerates_one_minute_daynight_rounding():
+    """HH:MM rounding in the app: two 91.5-minute bands display as 91+91=182, total 183."""
+    det = _detail(day=91, night=91, total=183)
+    shots = [
+        IngestedScreenshot(Path("a.png"), ScreenKind.DETAIL, detail=det),
+        IngestedScreenshot(Path("b.png"), ScreenKind.CONDITIONS, conditions=_conditions()),
+    ]
+    res = pair_and_merge(shots, [_supervisor()])
+    assert res.errors == []
+
+
 def test_unknown_supervisor_keeps_label_and_flags_review():
     shots = [
         IngestedScreenshot(Path("a.png"), ScreenKind.DETAIL, detail=_detail(supervisor="X Y", signed_off="X Y")),
