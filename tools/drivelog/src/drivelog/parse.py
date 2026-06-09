@@ -241,10 +241,12 @@ def parse_conditions(tokens: list[OcrToken], image_path: Path | None = None) -> 
 
     if image_path is not None:
         from .iconselect import detect_multiple_selected, detect_selected
-        weather = detect_selected(image_path, WEATHER_OPTIONS, tokens) or "Unknown"
+        weather_list = detect_multiple_selected(image_path, WEATHER_OPTIONS, tokens)
+        weather = ", ".join(weather_list) if weather_list else "Unknown"
         road_list = detect_multiple_selected(image_path, ROAD_OPTIONS, tokens)
         road_type = ", ".join(road_list) if road_list else "Unknown"
-        traffic = detect_selected(image_path, TRAFFIC_OPTIONS, tokens) or "Unknown"
+        traffic_list = detect_multiple_selected(image_path, TRAFFIC_OPTIONS, tokens)
+        traffic = ", ".join(traffic_list) if traffic_list else "Unknown"
         feel = detect_selected(image_path, FEEL_OPTIONS, tokens) or "Unknown"
     else:
         weather = road_type = traffic = feel = "Unknown"

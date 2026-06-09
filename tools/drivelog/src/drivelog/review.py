@@ -93,33 +93,24 @@ def _show(console: Console, trip: Trip) -> None:
 def _fill_conditions(console: Console, trip: Trip) -> Trip:
     """Prompt only for fields the detector returned as Unknown."""
     if trip.weather == "Unknown":
-        trip.weather = Prompt.ask("Weather", choices=list(WEATHER_OPTIONS), default="Fine")
+        trip.weather = _prompt_multi(console, "Weather", WEATHER_OPTIONS, "", "Fine")
     if trip.road_type == "Unknown":
-        trip.road_type = _prompt_road_multi(console, "")
+        trip.road_type = _prompt_multi(console, "Road types", ROAD_OPTIONS, "", "Quiet Street")
     if trip.traffic == "Unknown":
-        trip.traffic = Prompt.ask("Traffic", choices=list(TRAFFIC_OPTIONS), default="Light")
+        trip.traffic = _prompt_multi(console, "Traffic", TRAFFIC_OPTIONS, "", "Light")
     if trip.feel == "Unknown":
         trip.feel = Prompt.ask("Feel", choices=list(FEEL_OPTIONS), default="Good")
     return trip
 
 
 def _edit_conditions(console: Console, trip: Trip) -> Trip:
-    """Prompt for every condition, defaulting to the currently-stored value.
-
-    Press Enter to keep what's there; type a new value to override.
-    """
+    """Prompt for every condition, defaulting to the currently-stored value."""
     def _default(value: str, options: tuple[str, ...], fallback: str) -> str:
         return value if value in options else fallback
 
-    trip.weather = Prompt.ask(
-        "Weather", choices=list(WEATHER_OPTIONS),
-        default=_default(trip.weather, WEATHER_OPTIONS, "Fine"),
-    )
-    trip.road_type = _prompt_road_multi(console, trip.road_type)
-    trip.traffic = Prompt.ask(
-        "Traffic", choices=list(TRAFFIC_OPTIONS),
-        default=_default(trip.traffic, TRAFFIC_OPTIONS, "Light"),
-    )
+    trip.weather = _prompt_multi(console, "Weather", WEATHER_OPTIONS, trip.weather, "Fine")
+    trip.road_type = _prompt_multi(console, "Road types", ROAD_OPTIONS, trip.road_type, "Quiet Street")
+    trip.traffic = _prompt_multi(console, "Traffic", TRAFFIC_OPTIONS, trip.traffic, "Light")
     trip.feel = Prompt.ask(
         "Feel", choices=list(FEEL_OPTIONS),
         default=_default(trip.feel, FEEL_OPTIONS, "Good"),
@@ -161,17 +152,17 @@ def _maybe_register_supervisor(console: Console, trip: Trip, paths: Paths) -> No
     console.print(f"[green]Added '{trip.supervisor}' to supervisors.yaml[/green]")
 
 
-def _prompt_road_multi(console: Console, current: str) -> str:
-    """Multi-select road type. Accepts comma-separated input; loops on invalid."""
-    default = current if current and current != "Unknown" else "Quiet Street"
+def _prompt_multi(console: Console, label: str, options: tuple[str, ...], current: str, fallback: str) -> str:
+    """Multi-select prompt. Accepts comma-separated input; validates each value."""
+    default = current if current and current != "Unknown" else fallback
     while True:
         raw = Prompt.ask(
-            f"Road types (comma-separated; options: {' | '.join(ROAD_OPTIONS)})",
+            f"{label} (comma-separated; options: {' | '.join(options)})",
             default=default,
         )
         parts = [p.strip() for p in raw.split(",") if p.strip()]
-        invalid = [p for p in parts if p not in ROAD_OPTIONS]
+        invalid = [p for p in parts if p not in options]
         if invalid:
-            console.print(f"[red]Not valid road types: {invalid}. Try again.[/red]")
+            console.print(f"[red]Not valid for {label}: {invalid}. Try again.[/red]")
             continue
         return ", ".join(parts) if parts else "Unknown"
