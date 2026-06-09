@@ -153,11 +153,11 @@ def debug(
     tokens = ocr_image(image)
     kind = classify(tokens)
     console.print(f"[bold]Classified as:[/bold] {kind.value}  ({len(tokens)} tokens)")
-    console.print(f"{'Text':<32} {'Conf':>5}  {'x':>5} {'y_top':>6} {'w':>5} {'h':>5}")
+    console.print(f"{'Text':<52} {'Conf':>5}  {'x':>5} {'y_top':>6} {'w':>5} {'h':>5}")
     for t in tokens:
         y_top = 1.0 - (t.y + t.h)
         console.print(
-            f"{t.text[:30]:<32} {t.confidence:.2f}  "
+            f"{t.text[:50]:<52} {t.confidence:.2f}  "
             f"{t.x:.3f} {y_top:.3f} {t.w:.3f} {t.h:.3f}"
         )
 

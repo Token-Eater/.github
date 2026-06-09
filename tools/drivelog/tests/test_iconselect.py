@@ -126,3 +126,44 @@ def test_detect_multiple_selected_returns_all_when_all_lit(tmp_path):
     _make_image_multi(set(range(len(OPTIONS))), img_path)
     result = detect_multiple_selected(img_path, OPTIONS, _tokens_for_labels())
     assert set(result) == set(OPTIONS)
+
+
+def test_label_token_handles_merged_row():
+    """Vision merges adjacent labels into one token; we should still detect the slice."""
+    from drivelog.iconselect import _label_token
+
+    # Simulate the real iPhone road row: Sealed and Unsealed standalone, then
+    # the other three squashed into one merged token.
+    merged_text = "Quiet Street Main Road Multi-laned"
+    tokens = [
+        OcrToken(text="Sealed", confidence=1.0, x=0.079, y=0.585, w=0.108, h=0.013),
+        OcrToken(text="Unsealed", confidence=1.0, x=0.242, y=0.585, w=0.150, h=0.014),
+        OcrToken(text=merged_text, confidence=1.0, x=0.404, y=0.585, w=0.555, h=0.018),
+    ]
+    # Direct hits still work
+    assert _label_token(tokens, "Sealed").text == "Sealed"
+    assert _label_token(tokens, "Unsealed").text == "Unsealed"
+
+    # Quiet Street should be a virtual token at the START of the merged bbox.
+    qs = _label_token(tokens, "Quiet Street")
+    assert qs is not None
+    assert qs.text == "Quiet Street"
+    qs_x_centre = qs.x + qs.w / 2
+    assert 0.45 < qs_x_centre < 0.55
+
+    # Multi-laned should be at the END of the merged bbox.
+    ml = _label_token(tokens, "Multi-laned")
+    assert ml is not None
+    ml_x_centre = ml.x + ml.w / 2
+    assert 0.82 < ml_x_centre < 0.92
+
+
+def test_label_token_word_boundary_prevents_unsealed_matching_sealed():
+    """'Sealed' must not match inside 'Unsealed' via substring."""
+    from drivelog.iconselect import _label_token
+
+    tokens = [
+        OcrToken(text="Unsealed", confidence=1.0, x=0.242, y=0.585, w=0.150, h=0.014),
+    ]
+    assert _label_token(tokens, "Sealed") is None
+    assert _label_token(tokens, "Unsealed") is not None

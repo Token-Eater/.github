@@ -17,6 +17,7 @@ blueness.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PIL import Image, ImageStat
@@ -30,10 +31,38 @@ SELECTED_GAP_THRESHOLD = 15
 
 
 def _label_token(tokens: list[OcrToken], label: str) -> OcrToken | None:
+    """Find the token whose text matches `label`, or synthesise one from a merged row.
+
+    Apple Vision sometimes joins adjacent same-line labels into a single token
+    (e.g. 'Quiet Street Main Road Multi-laned'). When the exact label isn't a
+    standalone token, search for it as a word-bounded substring of any token
+    and return a virtual OcrToken positioned at the matching X-slice of the
+    parent. Word boundaries prevent 'Sealed' from matching inside 'Unsealed'.
+    """
     norm = label.strip().lower()
     for t in tokens:
         if t.text.strip().lower() == norm:
             return t
+
+    pattern = re.compile(rf"\b{re.escape(norm)}\b", re.IGNORECASE)
+    for t in tokens:
+        text = t.text.strip()
+        m = pattern.search(text.lower())
+        if not m:
+            continue
+        n_chars = len(text)
+        if n_chars == 0:
+            continue
+        sub_x = t.x + (m.start() / n_chars) * t.w
+        sub_w = (len(norm) / n_chars) * t.w
+        return OcrToken(
+            text=label,
+            confidence=t.confidence,
+            x=sub_x,
+            y=t.y,
+            w=sub_w,
+            h=t.h,
+        )
     return None
 
 
