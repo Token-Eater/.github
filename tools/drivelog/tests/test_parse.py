@@ -81,6 +81,33 @@ def test_header_timestamp_parses_full_month_with_at():
     assert ts.hour == 14 and ts.minute == 42
 
 
+def test_header_timestamp_today_uses_base_date():
+    from datetime import date
+    tokens = _tokens([(0, ["Today at 3:34 am"])])
+    ts = parse_header_timestamp(tokens, base_date=date(2026, 6, 8))
+    assert ts.year == 2026 and ts.month == 6 and ts.day == 8
+    assert ts.hour == 3 and ts.minute == 34
+
+
+def test_header_timestamp_yesterday_subtracts_one_day():
+    from datetime import date
+    tokens = _tokens([(0, ["Yesterday at 11:59 pm"])])
+    ts = parse_header_timestamp(tokens, base_date=date(2026, 6, 8))
+    assert ts.year == 2026 and ts.month == 6 and ts.day == 7
+    assert ts.hour == 23 and ts.minute == 59
+
+
+def test_header_timestamp_ignores_ios_status_bar_clock():
+    """'3:42' alone isn't a header timestamp - status-bar clock shouldn't false-match."""
+    tokens = _tokens([
+        (0, ["3:42", "91%"]),
+        (1, ["Today at 3:34 am"]),
+    ])
+    from datetime import date
+    ts = parse_header_timestamp(tokens, base_date=date(2026, 6, 8))
+    assert ts.hour == 3 and ts.minute == 34  # matched 'Today at 3:34', not '3:42'
+
+
 def test_extract_day_night_handles_labels_above_values():
     """Real screenshots put Day/Night/Total labels on one row, values on the next."""
     from drivelog.parse import _extract_day_night

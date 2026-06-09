@@ -14,7 +14,7 @@ selection is left as "Unknown" for the review step.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from .config import TZ
@@ -37,6 +37,10 @@ _HEADER_RE = re.compile(
     r"(\d{1,2}\s+\w+\s+\d{4})\s+(?:at\s+)?(\d{1,2}:\d{2}\s*(?:am|pm))",
     re.IGNORECASE,
 )
+_RELATIVE_HEADER_RE = re.compile(
+    r"\b(Today|Yesterday)\s+at\s+(\d{1,2}:\d{2}\s*(?:am|pm))",
+    re.IGNORECASE,
+)
 _DURATION_RE = re.compile(r"\b(\d{1,2}):(\d{2})\b")
 
 
@@ -44,18 +48,49 @@ class ParseError(ValueError):
     pass
 
 
-def parse_header_timestamp(tokens: list[OcrToken]) -> datetime:
-    """The page-header timestamp is the topmost text matching '<date> at <time>'."""
+def screenshot_date(image_path: Path | None) -> date:
+    """Return the date the screenshot was captured, for resolving 'Today'/'Yesterday'.
+
+    Uses file mtime (preserved by AirDrop in the common case) and falls
+    back to the current date in ACT if the file can't be stat'd.
+    """
+    if image_path is not None:
+        try:
+            mtime = image_path.stat().st_mtime
+            return datetime.fromtimestamp(mtime, tz=TZ).date()
+        except OSError:
+            pass
+    return datetime.now(TZ).date()
+
+
+def parse_header_timestamp(tokens: list[OcrToken], base_date: date | None = None) -> datetime:
+    """The page-header timestamp is the topmost text matching an absolute or relative date."""
     rows = cluster_rows(tokens)
-    for row in rows[:6]:  # only look near the top
+    for row in rows[:8]:
         joined = " ".join(t.text for t in row)
-        m = _HEADER_RE.search(joined)
-        if m:
-            return _parse_datetime(m.group(1), m.group(2))
+        try:
+            return _parse_datetime_from_text(joined, base_date)
+        except ParseError:
+            continue
     raise ParseError("Could not find header timestamp")
 
 
-def _parse_datetime(date_str: str, time_str: str) -> datetime:
+def _parse_datetime_from_text(text: str, base_date: date | None) -> datetime:
+    """Try absolute ('6 Jun 2026 at 2:42 pm') then relative ('Today at 3:34 am')."""
+    m = _HEADER_RE.search(text)
+    if m:
+        return _parse_absolute_datetime(m.group(1), m.group(2))
+    m = _RELATIVE_HEADER_RE.search(text)
+    if m:
+        if base_date is None:
+            base_date = datetime.now(TZ).date()
+        word = m.group(1).lower()
+        anchor = base_date - timedelta(days=1) if word == "yesterday" else base_date
+        return _combine_date_and_time_str(anchor, m.group(2))
+    raise ParseError(f"Could not parse datetime from {text!r}")
+
+
+def _parse_absolute_datetime(date_str: str, time_str: str) -> datetime:
     cleaned = f"{date_str} {time_str.replace(' ', '').upper()}"
     for fmt in ("%d %B %Y %I:%M%p", "%d %b %Y %I:%M%p"):
         try:
@@ -63,6 +98,12 @@ def _parse_datetime(date_str: str, time_str: str) -> datetime:
         except ValueError:
             continue
     raise ParseError(f"Could not parse datetime from {date_str!r} {time_str!r}")
+
+
+def _combine_date_and_time_str(d: date, time_str: str) -> datetime:
+    cleaned = time_str.replace(" ", "").upper()
+    t = datetime.strptime(cleaned, "%I:%M%p").time()
+    return datetime.combine(d, t).replace(tzinfo=TZ)
 
 
 _TRAILING_CHEVRONS = ">›❯→"
@@ -150,8 +191,9 @@ def _extract_day_night(tokens: list[OcrToken]) -> tuple[int, int, int]:
     )
 
 
-def parse_detail(tokens: list[OcrToken]) -> TripDetail:
-    header = parse_header_timestamp(tokens)
+def parse_detail(tokens: list[OcrToken], image_path: Path | None = None) -> TripDetail:
+    base_date = screenshot_date(image_path)
+    header = parse_header_timestamp(tokens, base_date)
     rows = _extract_rows(tokens)
     signed_off = _extract_signed_off(tokens)
     day_min, night_min, total_min = _extract_day_night(tokens)
@@ -167,21 +209,14 @@ def parse_detail(tokens: list[OcrToken]) -> TripDetail:
         signed_off_by=signed_off,
         start_suburb=rows["Start Suburb"],
         end_suburb=rows["End Suburb"],
-        start_time=_parse_value_datetime(rows["Start Time"]),
-        end_time=_parse_value_datetime(rows["End Time"]),
+        start_time=_parse_datetime_from_text(rows["Start Time"], base_date),
+        end_time=_parse_datetime_from_text(rows["End Time"], base_date),
         start_odometer=_parse_odometer(rows["Start Odometer"]),
         end_odometer=_parse_odometer(rows["End Odometer"]),
         day_minutes=day_min,
         night_minutes=night_min,
         total_minutes=total_min,
     )
-
-
-def _parse_value_datetime(value: str) -> datetime:
-    m = _HEADER_RE.search(value)
-    if not m:
-        raise ParseError(f"Could not parse datetime from {value!r}")
-    return _parse_datetime(m.group(1), m.group(2))
 
 
 def _parse_odometer(value: str) -> int:
@@ -201,7 +236,8 @@ def parse_conditions(tokens: list[OcrToken], image_path: Path | None = None) -> 
     If image_path is provided, sample icon regions to detect which option
     is selected. Otherwise leave selections as "Unknown" for review.
     """
-    header = parse_header_timestamp(tokens)
+    base_date = screenshot_date(image_path)
+    header = parse_header_timestamp(tokens, base_date)
 
     if image_path is not None:
         from .iconselect import detect_multiple_selected, detect_selected
