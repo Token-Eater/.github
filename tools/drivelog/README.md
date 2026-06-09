@@ -32,7 +32,8 @@ pip install -e '.[mac]'
 # 2. OCR + classify + pair
 drivelog ingest
 
-# 3. Review pending trips (fill conditions, approve / discard)
+# 3. Review pending trips (a=approve as-detected,
+#    e=edit conditions then approve, s=skip, d=discard)
 drivelog review
 
 # 4. Render printable PDFs
@@ -41,6 +42,9 @@ open out/drivelog-2026-05-day.pdf
 
 # Anytime: see what's pending
 drivelog status
+
+# If something parses oddly, inspect raw OCR for one screenshot:
+drivelog debug data/intake/IMG_1234.PNG
 ```
 
 ## What goes on each screenshot
@@ -51,6 +55,12 @@ drivelog status
 ## What's stored vs printed
 
 Drivelog captures all of `weather`, `road_type`, `traffic`, `feel`, and `notes` into `trips.json` and shows them in `review`. Only `weather` is printed into the WEATHER CONDITIONS column of the ACT paper book (which has no columns for the rest). The extra fields are kept against the chance that ACT moves to a digital log book — they'll already be in your data.
+
+`road_type` is multi-select (the app lets you tick more than one road type per trip), so it's stored as a comma-separated string like `"Quiet Street, Main Road, Multi-laned"`. The other three rows are single-select.
+
+## When detection is wrong
+
+Icon-state detection is heuristic (pixel sampling above each label, scoring by "blueness" of the circle background). If it ever picks something incorrect, hit `e` at the review prompt and walk through all five fields with the detected value as default — Enter to accept, type a new value to override.
 
 ## Mixed day/night trips
 
