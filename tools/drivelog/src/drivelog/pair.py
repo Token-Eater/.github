@@ -109,6 +109,7 @@ def pair_and_merge(
                 notes=cond.notes,
                 needs_review=bool(review_reasons),
                 review_reasons=review_reasons,
+                source_files=[det_shot.path.name, cond_shot.path.name],
             )
         )
         used.add(det_shot.path)

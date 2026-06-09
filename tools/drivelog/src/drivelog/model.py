@@ -85,6 +85,7 @@ class Trip:
     notes: str = ""
     needs_review: bool = False
     review_reasons: list[str] = field(default_factory=list)
+    source_files: list[str] = field(default_factory=list)
 
     def km(self) -> int:
         return self.end_odometer - self.start_odometer

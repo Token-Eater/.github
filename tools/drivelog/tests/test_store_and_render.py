@@ -86,3 +86,52 @@ def test_render_handles_empty_rows(tmp_path):
     out = paths.out / "drivelog-night.pdf"
     render_pages([], TimeBand.NIGHT, out)
     assert out.exists() and out.stat().st_size > 0
+
+
+def test_split_weather_short_string_unchanged():
+    from drivelog.render import _split_weather
+    primary, cont = _split_weather("Fine")
+    assert primary == "Fine"
+    assert cont == ""
+
+
+def test_split_weather_overflow_breaks_at_comma():
+    from drivelog.render import _split_weather, WEATHER_MAX_CHARS
+    primary, cont = _split_weather("Fine, Rain, Snow, Icy, Fog")
+    assert len(primary) <= WEATHER_MAX_CHARS
+    assert cont != ""
+    # Original is preserved if we rejoin
+    assert {p.strip() for p in (primary + ", " + cont).split(",")} == {"Fine", "Rain", "Snow", "Icy", "Fog"}
+
+
+def test_expand_for_weather_emits_continuation_row():
+    from drivelog.render import _expand_for_weather
+    from datetime import datetime, timedelta
+    from drivelog.config import TZ
+    long_row = LogRow(
+        trip_id="x", band=TimeBand.DAY,
+        date=datetime(2026, 6, 6, 9, tzinfo=TZ),
+        weather="Fine, Rain, Snow, Icy, Fog",
+        sd_name="Test", sd_licence="123", sd_signature_image=None,
+        start_time=datetime(2026, 6, 6, 9, tzinfo=TZ),
+        finish_time=datetime(2026, 6, 6, 10, tzinfo=TZ),
+        odometer_start=1000, odometer_finish=1010,
+        total=timedelta(hours=1),
+    )
+    visuals = _expand_for_weather([long_row])
+    assert len(visuals) == 2
+    assert not visuals[0].is_continuation
+    assert visuals[1].is_continuation
+
+
+def test_chunk_keep_pairs_doesnt_split_continuation_across_sections():
+    from drivelog.render import _chunk_keep_pairs, _VisualRow
+    # 5 normal rows + 1 primary + 1 continuation = 7 visual rows, ROWS_PER_SECTION=7
+    # but if we ask for section size 6 the pair must move to the next section.
+    rows = [_VisualRow(log_row=None, weather=f"r{i}") for i in range(5)]
+    rows.append(_VisualRow(log_row=None, weather="primary"))
+    rows.append(_VisualRow(log_row=None, weather="cont", is_continuation=True))
+    sections = list(_chunk_keep_pairs(rows, 6))
+    assert len(sections) == 2
+    assert len(sections[0]) == 5
+    assert len(sections[1]) == 2  # primary + continuation together

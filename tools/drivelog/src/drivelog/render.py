@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
@@ -25,6 +26,57 @@ DAY_COLOUR = colors.HexColor("#1F2E5A")  # deep navy header band
 NIGHT_COLOUR = colors.HexColor("#F26522")  # bright orange header band
 
 ROWS_PER_SECTION = 7  # matches the scans (~7 rows per half-page)
+WEATHER_MAX_CHARS = 14  # approx fit in the 22mm WEATHER CONDITIONS column at 8pt
+
+
+@dataclass
+class _VisualRow:
+    """One printed row: either a LogRow's primary view or a continuation of its weather."""
+    log_row: LogRow
+    weather: str
+    is_continuation: bool = False
+
+
+def _split_weather(weather: str) -> tuple[str, str]:
+    """Split a comma-separated weather string at a comma so the first part fits the column."""
+    if len(weather) <= WEATHER_MAX_CHARS:
+        return weather, ""
+    parts = [p.strip() for p in weather.split(",")]
+    primary = ""
+    i = 0
+    for i, part in enumerate(parts):
+        candidate = f"{primary}, {part}" if primary else part
+        if len(candidate) > WEATHER_MAX_CHARS and primary:
+            break
+        primary = candidate
+    else:
+        i = len(parts)
+    rest = ", ".join(parts[i:])
+    return primary, rest
+
+
+def _expand_for_weather(rows: list[LogRow]) -> list[_VisualRow]:
+    out: list[_VisualRow] = []
+    for r in rows:
+        primary, cont = _split_weather(r.weather)
+        out.append(_VisualRow(log_row=r, weather=primary))
+        if cont:
+            out.append(_VisualRow(log_row=r, weather=cont, is_continuation=True))
+    return out
+
+
+def _chunk_keep_pairs(rows: list[_VisualRow], size: int):
+    section: list[_VisualRow] = []
+    i = 0
+    while i < len(rows):
+        consume = 2 if i + 1 < len(rows) and rows[i + 1].is_continuation else 1
+        if section and len(section) + consume > size:
+            yield section
+            section = []
+        section.extend(rows[i:i + consume])
+        i += consume
+    if section:
+        yield section
 
 COLUMNS = (
     ("DATE", 18 * mm),
@@ -65,7 +117,8 @@ def render_pages(
     )
 
     rows_for_band = [r for r in rows if r.band == band]
-    sections = list(_chunk(rows_for_band, ROWS_PER_SECTION))
+    visual_rows = _expand_for_weather(rows_for_band)
+    sections = list(_chunk_keep_pairs(visual_rows, ROWS_PER_SECTION))
     if not sections:
         sections = [[]]
 
@@ -83,7 +136,10 @@ def render_pages(
         story.append(Paragraph(title_text, title_style))
         story.append(Paragraph("WITH A SUPERVISING DRIVER", subtitle_style))
         story.append(Spacer(1, 2 * mm))
-        section_total = sum((r.total for r in section), timedelta())
+        section_total = sum(
+            (vr.log_row.total for vr in section if not vr.is_continuation),
+            timedelta(),
+        )
         running_total += section_total
         story.append(_section_table(section, band_colour, section_total))
 
@@ -91,15 +147,21 @@ def render_pages(
     return output
 
 
-def _section_table(rows: list[LogRow], band_colour, subtotal: timedelta) -> Table:
+def _section_table(rows: list[_VisualRow], band_colour, subtotal: timedelta) -> Table:
     headers = [h for h, _ in COLUMNS]
     col_widths = [w for _, w in COLUMNS]
 
     body_rows: list[list] = []
-    for r in rows:
+    for vr in rows:
+        if vr.is_continuation:
+            body_rows.append([
+                "", f"↳ {vr.weather}", "", "", "", "", "", "", "", "",
+            ])
+            continue
+        r = vr.log_row
         body_rows.append([
             r.date.strftime("%d/%m/%Y"),
-            r.weather,
+            vr.weather,
             r.sd_name,
             r.sd_licence,
             _signature_cell(r.sd_signature_image),
@@ -155,6 +217,3 @@ def _signature_cell(path: str | None):
         return ""
 
 
-def _chunk(seq, size):
-    for i in range(0, max(len(seq), 1), size):
-        yield seq[i:i + size]

@@ -83,6 +83,8 @@ def _show(console: Console, trip: Trip) -> None:
     tbl.add_row("Conditions", f"weather={trip.weather} road={trip.road_type} traffic={trip.traffic} feel={trip.feel}")
     if trip.notes:
         tbl.add_row("Notes", trip.notes)
+    if trip.source_files:
+        tbl.add_row("Source", ", ".join(trip.source_files))
     console.print(tbl)
     console.print(
         "[dim]Captured: road type / traffic / feel / notes are stored but not "
