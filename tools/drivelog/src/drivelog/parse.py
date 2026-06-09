@@ -228,20 +228,29 @@ _TAB_BAR_LABELS = {"trips", "learn", "logbook", "settings"}
 
 
 def _extract_notes(tokens: list[OcrToken]) -> str:
-    """Anything below the 'Notes' label, joined into one string.
+    """Anything between the 'Notes' label and the iOS tab bar.
 
-    Skips the iOS bottom tab bar (Trips / Learn / Logbook / Settings) and
-    anything in the bottom 8% of the screen so the navigation chrome
-    doesn't leak into captured notes.
+    The tab bar (Trips / Learn / Logbook / Settings) is the only thing
+    that ever appears below Notes in this app. If we see one of those
+    labels, use its Y as the cutoff; otherwise take everything below
+    Notes. This is robust to screenshots that are cropped above the tab
+    bar (where no cutoff is needed) and screenshots that include it.
     """
     notes_token = next((t for t in tokens if t.text.strip().lower() == "notes"), None)
     if notes_token is None:
         return ""
+
+    tab_bar_ys = [
+        t.y_centre for t in tokens
+        if t.y_centre > notes_token.y_centre + 0.005
+        and t.text.strip().lower() in _TAB_BAR_LABELS
+    ]
+    upper_bound = min(tab_bar_ys) if tab_bar_ys else 1.0
+
     below = [
         t for t in tokens
-        if t.y_centre > notes_token.y_centre + 0.005
+        if notes_token.y_centre + 0.005 < t.y_centre < upper_bound
         and t.text.strip().lower() not in _TAB_BAR_LABELS
-        and t.y_centre < 0.93
     ]
     below.sort(key=lambda t: (round(t.y_centre, 3), t.x_centre))
     return " ".join(t.text for t in below).strip()

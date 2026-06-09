@@ -5,11 +5,14 @@ options have a light-blue background; unselected are dark grey. OCR
 can't see colour, but we can sample pixels above each label's bounding
 box to figure out which icon is "lit up".
 
-The label tokens come from OCR. For each option label we:
-1. Convert the label's bbox to pixel coords (ocrmac origin is bottom-left, normalised).
-2. Sample a small box centred above the label, where the icon sits.
-3. Score by mean brightness: selected (light blue) is much brighter than
-   unselected (dark grey).
+We score by "blueness" = B - (R+G)/2 so the light-blue selected circle
+stands out from both dark-grey unselected backgrounds and white icon
+glyphs (sun, cloud, snowflake) inside the circle.
+
+Icon-to-label spacing varies between rows (3-option rows have bigger
+icons than 5-option rows), so for each label we sample a vertical strip
+of Y positions above it and take whichever sample has the highest
+blueness.
 """
 
 from __future__ import annotations
@@ -20,8 +23,10 @@ from PIL import Image, ImageStat
 
 from .ocr import OcrToken
 
-ICON_OFFSET_REL_TO_IMG = 0.04
+ICON_OFFSET_RANGE = (0.02, 0.08)
+ICON_OFFSET_STEPS = 7
 SAMPLE_BOX_PX = 24
+SELECTED_GAP_THRESHOLD = 15
 
 
 def _label_token(tokens: list[OcrToken], label: str) -> OcrToken | None:
@@ -32,24 +37,33 @@ def _label_token(tokens: list[OcrToken], label: str) -> OcrToken | None:
     return None
 
 
-def _sample_above(img: Image.Image, token: OcrToken) -> tuple[float, float, float]:
+def _blueness_above(img: Image.Image, token: OcrToken) -> float:
+    """Best blueness score in a vertical strip above the label's bbox."""
     w, h = img.size
     cx_px = int(token.x_centre * w)
     label_top_topdown = 1.0 - (token.y + token.h)
-    icon_centre_y_px = int(label_top_topdown * h) - int(ICON_OFFSET_REL_TO_IMG * h)
+    label_top_px = int(label_top_topdown * h)
 
     half = SAMPLE_BOX_PX // 2
-    box = (
-        max(0, cx_px - half),
-        max(0, icon_centre_y_px - half),
-        min(w, cx_px + half),
-        min(h, icon_centre_y_px + half),
-    )
-    if box[2] <= box[0] or box[3] <= box[1]:
-        return (0.0, 0.0, 0.0)
-    region = img.crop(box).convert("RGB")
-    r, g, b = ImageStat.Stat(region).mean
-    return (r, g, b)
+    lo, hi = ICON_OFFSET_RANGE
+    best = -float("inf")
+    for i in range(ICON_OFFSET_STEPS):
+        offset_frac = lo + (hi - lo) * i / (ICON_OFFSET_STEPS - 1)
+        icon_centre_y_px = label_top_px - int(offset_frac * h)
+        box = (
+            max(0, cx_px - half),
+            max(0, icon_centre_y_px - half),
+            min(w, cx_px + half),
+            min(h, icon_centre_y_px + half),
+        )
+        if box[2] <= box[0] or box[3] <= box[1]:
+            continue
+        region = img.crop(box).convert("RGB")
+        r, g, b = ImageStat.Stat(region).mean
+        blueness = b - (r + g) / 2
+        if blueness > best:
+            best = blueness
+    return best if best != -float("inf") else 0.0
 
 
 def detect_selected(
@@ -57,26 +71,18 @@ def detect_selected(
     options: tuple[str, ...],
     tokens: list[OcrToken],
 ) -> str | None:
-    """Return the option whose icon background is most blue, or None if ambiguous.
-
-    The selected icon has a light-blue circle background; unselected are dark
-    grey. White icon glyphs (sun rays, cloud, snowflake, etc.) confuse a
-    plain brightness check, so we score by 'blueness' = B - (R+G)/2, which is
-    high for light blue, near zero for both grey and white.
-    """
+    """Return the option whose icon background is most blue, or None if ambiguous."""
     img = Image.open(image_path)
     scored: list[tuple[str, float]] = []
     for option in options:
         token = _label_token(tokens, option)
         if token is None:
             continue
-        r, g, b = _sample_above(img, token)
-        blueness = b - (r + g) / 2
-        scored.append((option, blueness))
+        scored.append((option, _blueness_above(img, token)))
     if not scored:
         return None
     best_label, best_score = max(scored, key=lambda x: x[1])
     others = [s for lbl, s in scored if lbl != best_label]
-    if others and best_score - max(others) < 15:
+    if others and best_score - max(others) < SELECTED_GAP_THRESHOLD:
         return None
     return best_label

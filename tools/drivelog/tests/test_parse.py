@@ -177,3 +177,24 @@ def test_extract_notes_below_label():
 def test_extract_notes_empty_when_no_label():
     from drivelog.parse import _extract_notes
     assert _extract_notes(_tokens([(0, ["2 May 2026 at 9:31 am"])])) == ""
+
+
+def test_extract_notes_stops_at_tab_bar():
+    """If 'Trips/Learn/Logbook/Settings' tokens appear below Notes, stop there."""
+    from drivelog.parse import _extract_notes
+    tokens = _tokens([
+        (0, ["Notes"]),
+        (1, ["real", "notes", "content", "here"]),
+        (2, ["Trips", "Learn", "Logbook", "Settings"]),
+    ])
+    assert _extract_notes(tokens) == "real notes content here"
+
+
+def test_extract_notes_no_tab_bar_takes_everything():
+    """Cropped screenshots without a tab bar should still capture notes."""
+    from drivelog.parse import _extract_notes
+    tokens = _tokens([
+        (0, ["Notes"]),
+        (1, ["only", "notes", "no", "tab", "bar"]),
+    ])
+    assert _extract_notes(tokens) == "only notes no tab bar"
