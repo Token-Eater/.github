@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .classify import ScreenKind
 from .config import resolve_supervisor
-from .model import Supervisor, Trip, TripConditions, TripDetail
+from .model import Supervisor, Trip, TripConditions, TripDetail, _norm_name
 
 
 @dataclass
@@ -52,8 +52,12 @@ def pair_and_merge(
         cond = cond_shot.conditions
         assert cond is not None
 
-        # Day + Night must equal Total.
-        if det.day_minutes + det.night_minutes != det.total_minutes:
+        # Day + Night should equal Total. Allow 1 minute of rounding drift:
+        # the app shows each as HH:MM (truncating seconds), so two 91.5-minute
+        # bands display as 91 + 91 = 182, while Total computed from start/end
+        # shows 183. Real, harmless, log a warning.
+        delta = (det.day_minutes + det.night_minutes) - det.total_minutes
+        if abs(delta) > 1:
             errors.append(
                 (
                     det_shot.path,
@@ -62,8 +66,8 @@ def pair_and_merge(
                 )
             )
 
-        # Sign-off / supervisor mismatch.
-        if det.signed_off_by and det.signed_off_by.strip() != det.supervisor_label.strip():
+        # Sign-off / supervisor mismatch (after normalising whitespace + case).
+        if det.signed_off_by and _norm_name(det.signed_off_by) != _norm_name(det.supervisor_label):
             errors.append(
                 (
                     det_shot.path,
@@ -105,6 +109,7 @@ def pair_and_merge(
                 notes=cond.notes,
                 needs_review=bool(review_reasons),
                 review_reasons=review_reasons,
+                source_files=[det_shot.path.name, cond_shot.path.name],
             )
         )
         used.add(det_shot.path)

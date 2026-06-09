@@ -63,7 +63,7 @@ def ingest(
         kind = classify(tokens)
         try:
             if kind == ScreenKind.DETAIL:
-                shots.append(IngestedScreenshot(path=img, kind=kind, detail=parse_detail(tokens)))
+                shots.append(IngestedScreenshot(path=img, kind=kind, detail=parse_detail(tokens, image_path=img)))
             elif kind == ScreenKind.CONDITIONS:
                 shots.append(IngestedScreenshot(path=img, kind=kind, conditions=parse_conditions(tokens, image_path=img)))
             else:
@@ -137,6 +137,55 @@ def render(
         console.print(f"[green]Wrote {out_night} ({len(night_rows)} rows)[/green]")
     if not day_rows and not night_rows:
         console.print("[yellow]No day or night rows to render.[/yellow]")
+
+
+@app.command()
+def debug(
+    image: Path = typer.Argument(..., help="Path to a single screenshot to inspect."),
+) -> None:
+    """Print every OCR token from one screenshot with text, confidence, and position.
+
+    Useful when parse fails: shows exactly what Vision saw so you can tell
+    whether the issue is OCR quality or our spatial assumptions.
+    """
+    from .ocr import ocr_image
+
+    tokens = ocr_image(image)
+    kind = classify(tokens)
+    console.print(f"[bold]Classified as:[/bold] {kind.value}  ({len(tokens)} tokens)")
+    console.print(f"{'Text':<52} {'Conf':>5}  {'x':>5} {'y_top':>6} {'w':>5} {'h':>5}")
+    for t in tokens:
+        y_top = 1.0 - (t.y + t.h)
+        console.print(
+            f"{t.text[:50]:<52} {t.confidence:.2f}  "
+            f"{t.x:.3f} {y_top:.3f} {t.w:.3f} {t.h:.3f}"
+        )
+
+    if kind == ScreenKind.CONDITIONS:
+        from PIL import Image
+        from .iconselect import SELECTED_BLUENESS_MIN, _blue_pixel_count, _label_token
+        from .parse import FEEL_OPTIONS, ROAD_OPTIONS, TRAFFIC_OPTIONS, WEATHER_OPTIONS
+
+        img = Image.open(image)
+        console.print(f"\n[bold]Conditions pixel counts[/bold] (threshold {SELECTED_BLUENESS_MIN})")
+        for group_name, options in (
+            ("weather", WEATHER_OPTIONS),
+            ("road", ROAD_OPTIONS),
+            ("traffic", TRAFFIC_OPTIONS),
+            ("feel", FEEL_OPTIONS),
+        ):
+            scores: list[tuple[str, int]] = []
+            for option in options:
+                token = _label_token(tokens, option)
+                if token is None:
+                    scores.append((option, -1))
+                    continue
+                scores.append((option, _blue_pixel_count(img, token)))
+            line = "  ".join(
+                f"[bold]{lbl}[/bold]={cnt}" if cnt >= SELECTED_BLUENESS_MIN else f"{lbl}={cnt}"
+                for lbl, cnt in scores
+            )
+            console.print(f"  {group_name:<8} {line}")
 
 
 @app.command()

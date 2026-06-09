@@ -60,6 +60,26 @@ def test_pair_merges_detail_and_conditions():
     assert "Conditions not yet set" in " ".join(trip.review_reasons)
 
 
+def test_supervisor_matches_ignores_whitespace_and_case():
+    """Alias 'O M' should match 'OM', 'om', '  O M  '."""
+    sup = Supervisor(full_name="Oliver Mitchell", licence_number="12345678", aliases=["O M"])
+    assert sup.matches("O M")
+    assert sup.matches("OM")
+    assert sup.matches("  o m  ")
+    assert sup.matches("oliver mitchell")
+    assert not sup.matches("J K")
+
+
+def test_signoff_check_ignores_whitespace():
+    """'Signed off by O M' should accept Supervisor field 'OM' after chevron strip."""
+    shots = [
+        IngestedScreenshot(Path("a.png"), ScreenKind.DETAIL, detail=_detail(signed_off="O M", supervisor="OM")),
+        IngestedScreenshot(Path("b.png"), ScreenKind.CONDITIONS, conditions=_conditions()),
+    ]
+    res = pair_and_merge(shots, [_supervisor()])
+    assert res.errors == []
+
+
 def test_pair_flags_signoff_mismatch():
     det = _detail(signed_off="J K", supervisor="O M")
     shots = [
@@ -79,6 +99,17 @@ def test_pair_flags_daynight_mismatch():
     ]
     res = pair_and_merge(shots, [_supervisor()])
     assert any("Day" in msg and "Total" in msg for _, msg in res.errors)
+
+
+def test_pair_tolerates_one_minute_daynight_rounding():
+    """HH:MM rounding in the app: two 91.5-minute bands display as 91+91=182, total 183."""
+    det = _detail(day=91, night=91, total=183)
+    shots = [
+        IngestedScreenshot(Path("a.png"), ScreenKind.DETAIL, detail=det),
+        IngestedScreenshot(Path("b.png"), ScreenKind.CONDITIONS, conditions=_conditions()),
+    ]
+    res = pair_and_merge(shots, [_supervisor()])
+    assert res.errors == []
 
 
 def test_unknown_supervisor_keeps_label_and_flags_review():

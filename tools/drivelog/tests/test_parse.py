@@ -67,6 +67,115 @@ def test_header_timestamp_parses():
     assert ts.hour == 9 and ts.minute == 31
 
 
+def test_header_timestamp_parses_short_month_no_at_no_space():
+    """Vision sometimes drops 'at' and the space before PM; some locales use 'Jun' not 'June'."""
+    tokens = _tokens([(0, ["6 Jun 2026 2:42PM"])])
+    ts = parse_header_timestamp(tokens)
+    assert ts.year == 2026 and ts.month == 6 and ts.day == 6
+    assert ts.hour == 14 and ts.minute == 42
+
+
+def test_header_timestamp_parses_full_month_with_at():
+    tokens = _tokens([(0, ["6 June 2026 at 2:42 PM"])])
+    ts = parse_header_timestamp(tokens)
+    assert ts.hour == 14 and ts.minute == 42
+
+
+def test_header_timestamp_today_uses_base_date():
+    from datetime import date
+    tokens = _tokens([(0, ["Today at 3:34 am"])])
+    ts = parse_header_timestamp(tokens, base_date=date(2026, 6, 8))
+    assert ts.year == 2026 and ts.month == 6 and ts.day == 8
+    assert ts.hour == 3 and ts.minute == 34
+
+
+def test_header_timestamp_yesterday_subtracts_one_day():
+    from datetime import date
+    tokens = _tokens([(0, ["Yesterday at 11:59 pm"])])
+    ts = parse_header_timestamp(tokens, base_date=date(2026, 6, 8))
+    assert ts.year == 2026 and ts.month == 6 and ts.day == 7
+    assert ts.hour == 23 and ts.minute == 59
+
+
+def test_header_timestamp_ignores_ios_status_bar_clock():
+    """'3:42' alone isn't a header timestamp - status-bar clock shouldn't false-match."""
+    tokens = _tokens([
+        (0, ["3:42", "91%"]),
+        (1, ["Today at 3:34 am"]),
+    ])
+    from datetime import date
+    ts = parse_header_timestamp(tokens, base_date=date(2026, 6, 8))
+    assert ts.hour == 3 and ts.minute == 34  # matched 'Today at 3:34', not '3:42'
+
+
+def test_extract_day_night_handles_merged_equals_total():
+    """Vision sometimes merges '=' with the Total value: '= 00:04'."""
+    from drivelog.parse import _extract_day_night
+    from drivelog.ocr import OcrToken
+
+    # Build tokens that mirror the real IMG_6373 layout: labels on one Y, values
+    # 0.027 below (within the 0.05 tolerance), each value aligned with its label X.
+    def at(text, x_centre, y_top, w=0.10, h=0.02):
+        return OcrToken(
+            text=text, confidence=0.99,
+            x=x_centre - w / 2, y=1.0 - (y_top + h), w=w, h=h,
+        )
+
+    tokens = [
+        at("7 Jun 2026 at 10:30 am", 0.498, 0.081),
+        at("Day", 0.365, 0.127),
+        at("Night", 0.619, 0.127),
+        at("Total", 0.874, 0.129),
+        at("00:04", 0.363, 0.156),
+        at("00:00", 0.630, 0.157),
+        at("= 00:04", 0.819, 0.158, w=0.238),
+    ]
+    assert _extract_day_night(tokens) == (4, 0, 4)
+
+
+def test_extract_day_night_infers_total_from_day_plus_night():
+    """If Day and Night parse but Total doesn't, fall back to day+night."""
+    from drivelog.parse import _extract_day_night
+    from drivelog.ocr import OcrToken
+    pad = [(r, ["."]) for r in range(2, 20)]
+    tokens = _tokens([
+        (0, ["2 May 2026 at 9:31 am"]),
+        (1, ["Km", "Day", "Night"]),
+    ] + pad)
+    tokens = [t for t in tokens if t.text != "."]
+    label_y_centre = next(t for t in tokens if t.text == "Day").y_centre
+    for text, x in [("00:04", 0.17), ("00:00", 0.29)]:
+        tokens.append(OcrToken(
+            text=text, confidence=0.99,
+            x=x, y=(1 - label_y_centre) - 0.03 - 0.02, w=0.10, h=0.02,
+        ))
+    assert _extract_day_night(tokens) == (4, 0, 4)
+
+
+def test_extract_day_night_handles_labels_above_values():
+    """Real screenshots put Day/Night/Total labels on one row, values on the next."""
+    from drivelog.parse import _extract_day_night
+
+    # Pad with empty rows so the label-to-value gap is realistically small (<5% of image).
+    pad = [(r, ["."]) for r in range(2, 20)]
+    tokens = _tokens([
+        (0, ["2 May 2026 at 9:31 am"]),
+        (1, ["Km", "Day", "Night", "Total"]),
+        # Values are on the row just after the labels: close in Y.
+    ] + pad)
+    # Replace one padding row with the actual values (close to the label row).
+    tokens = [t for t in tokens if t.text != "."]
+    # Add value tokens close to the label row's Y.
+    label_y_centre = next(t for t in tokens if t.text == "Day").y_centre
+    from drivelog.ocr import OcrToken
+    for i, (text, x) in enumerate([("2", 0.05), ("00:01", 0.17), ("00:00", 0.29), ("00:01", 0.41)]):
+        tokens.append(OcrToken(
+            text=text, confidence=0.99,
+            x=x, y=(1 - label_y_centre) - 0.03 - 0.02, w=0.10, h=0.02,
+        ))
+    assert _extract_day_night(tokens) == (1, 0, 1)
+
+
 def test_parse_detail_extracts_all_fields():
     det = parse_detail(SAMPLE_DETAIL)
     assert det.vehicle == "123ABC"
@@ -79,6 +188,26 @@ def test_parse_detail_extracts_all_fields():
     assert det.day_minutes == 1
     assert det.night_minutes == 0
     assert det.total_minutes == 1
+
+
+def test_extract_rows_strips_trailing_chevrons():
+    """iOS tappable rows often pick up a chevron ('>', '›') after the value."""
+    from drivelog.parse import _extract_rows
+    tokens = _tokens([
+        (0, ["Vehicle", "123ABC >"]),
+        (1, ["Supervisor", "OM >"]),
+        (2, ["Start Suburb", "Hackett, ACT ›"]),
+        (3, ["End Suburb", "Red Hill, ACT ›"]),
+        (4, ["Start Time", "6 Jun 2026 at 2:42 pm"]),
+        (5, ["End Time", "6 Jun 2026 at 3:53 pm"]),
+        (6, ["Start Odometer", "263,747"]),
+        (7, ["End Odometer", "263,793"]),
+    ])
+    rows = _extract_rows(tokens)
+    assert rows["Vehicle"] == "123ABC"
+    assert rows["Supervisor"] == "OM"
+    assert rows["Start Suburb"] == "Hackett, ACT"
+    assert rows["End Suburb"] == "Red Hill, ACT"
 
 
 def test_parse_detail_raises_on_missing_fields():
@@ -119,3 +248,24 @@ def test_extract_notes_below_label():
 def test_extract_notes_empty_when_no_label():
     from drivelog.parse import _extract_notes
     assert _extract_notes(_tokens([(0, ["2 May 2026 at 9:31 am"])])) == ""
+
+
+def test_extract_notes_stops_at_tab_bar():
+    """If 'Trips/Learn/Logbook/Settings' tokens appear below Notes, stop there."""
+    from drivelog.parse import _extract_notes
+    tokens = _tokens([
+        (0, ["Notes"]),
+        (1, ["real", "notes", "content", "here"]),
+        (2, ["Trips", "Learn", "Logbook", "Settings"]),
+    ])
+    assert _extract_notes(tokens) == "real notes content here"
+
+
+def test_extract_notes_no_tab_bar_takes_everything():
+    """Cropped screenshots without a tab bar should still capture notes."""
+    from drivelog.parse import _extract_notes
+    tokens = _tokens([
+        (0, ["Notes"]),
+        (1, ["only", "notes", "no", "tab", "bar"]),
+    ])
+    assert _extract_notes(tokens) == "only notes no tab bar"
