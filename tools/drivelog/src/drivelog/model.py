@@ -11,6 +11,11 @@ class TimeBand(str, Enum):
     NIGHT = "night"
 
 
+def _norm_name(s: str) -> str:
+    """Collapse all whitespace and lowercase, so 'O M' and 'OM' compare equal."""
+    return "".join(s.split()).lower()
+
+
 @dataclass
 class Supervisor:
     full_name: str
@@ -19,10 +24,10 @@ class Supervisor:
     signature_image: str | None = None
 
     def matches(self, app_label: str) -> bool:
-        target = app_label.strip().lower()
-        if target == self.full_name.strip().lower():
+        target = _norm_name(app_label)
+        if target == _norm_name(self.full_name):
             return True
-        return any(target == a.strip().lower() for a in self.aliases)
+        return any(target == _norm_name(a) for a in self.aliases)
 
 
 @dataclass

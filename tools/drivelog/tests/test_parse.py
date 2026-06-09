@@ -119,6 +119,26 @@ def test_parse_detail_extracts_all_fields():
     assert det.total_minutes == 1
 
 
+def test_extract_rows_strips_trailing_chevrons():
+    """iOS tappable rows often pick up a chevron ('>', '›') after the value."""
+    from drivelog.parse import _extract_rows
+    tokens = _tokens([
+        (0, ["Vehicle", "123ABC >"]),
+        (1, ["Supervisor", "OM >"]),
+        (2, ["Start Suburb", "Hackett, ACT ›"]),
+        (3, ["End Suburb", "Red Hill, ACT ›"]),
+        (4, ["Start Time", "6 Jun 2026 at 2:42 pm"]),
+        (5, ["End Time", "6 Jun 2026 at 3:53 pm"]),
+        (6, ["Start Odometer", "263,747"]),
+        (7, ["End Odometer", "263,793"]),
+    ])
+    rows = _extract_rows(tokens)
+    assert rows["Vehicle"] == "123ABC"
+    assert rows["Supervisor"] == "OM"
+    assert rows["Start Suburb"] == "Hackett, ACT"
+    assert rows["End Suburb"] == "Red Hill, ACT"
+
+
 def test_parse_detail_raises_on_missing_fields():
     incomplete = _tokens([
         (0, ["2 May 2026 at 9:31 am"]),

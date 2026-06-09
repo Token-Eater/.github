@@ -65,6 +65,17 @@ def _parse_datetime(date_str: str, time_str: str) -> datetime:
     raise ParseError(f"Could not parse datetime from {date_str!r} {time_str!r}")
 
 
+_TRAILING_CHEVRONS = ">›❯→"
+
+
+def _strip_chevron(s: str) -> str:
+    """Strip the iOS tappable-row chevron that OCR sometimes captures (>, ›, etc)."""
+    s = s.strip()
+    while s and s[-1] in _TRAILING_CHEVRONS:
+        s = s[:-1].strip()
+    return s
+
+
 def _extract_rows(tokens: list[OcrToken]) -> dict[str, str]:
     """Return {label: value} for each known DETAIL_LABEL present."""
     rows = cluster_rows(tokens)
@@ -74,6 +85,7 @@ def _extract_rows(tokens: list[OcrToken]) -> dict[str, str]:
         for label in DETAIL_LABELS:
             if row_text.lower().startswith(label.lower()):
                 value = row_text[len(label):].strip().lstrip(":").strip()
+                value = _strip_chevron(value)
                 if value:
                     result[label] = value
                 break

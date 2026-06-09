@@ -60,6 +60,26 @@ def test_pair_merges_detail_and_conditions():
     assert "Conditions not yet set" in " ".join(trip.review_reasons)
 
 
+def test_supervisor_matches_ignores_whitespace_and_case():
+    """Alias 'O M' should match 'OM', 'om', '  O M  '."""
+    sup = Supervisor(full_name="Oliver Mitchell", licence_number="12345678", aliases=["O M"])
+    assert sup.matches("O M")
+    assert sup.matches("OM")
+    assert sup.matches("  o m  ")
+    assert sup.matches("oliver mitchell")
+    assert not sup.matches("J K")
+
+
+def test_signoff_check_ignores_whitespace():
+    """'Signed off by O M' should accept Supervisor field 'OM' after chevron strip."""
+    shots = [
+        IngestedScreenshot(Path("a.png"), ScreenKind.DETAIL, detail=_detail(signed_off="O M", supervisor="OM")),
+        IngestedScreenshot(Path("b.png"), ScreenKind.CONDITIONS, conditions=_conditions()),
+    ]
+    res = pair_and_merge(shots, [_supervisor()])
+    assert res.errors == []
+
+
 def test_pair_flags_signoff_mismatch():
     det = _detail(signed_off="J K", supervisor="O M")
     shots = [

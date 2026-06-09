@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .classify import ScreenKind
 from .config import resolve_supervisor
-from .model import Supervisor, Trip, TripConditions, TripDetail
+from .model import Supervisor, Trip, TripConditions, TripDetail, _norm_name
 
 
 @dataclass
@@ -62,8 +62,8 @@ def pair_and_merge(
                 )
             )
 
-        # Sign-off / supervisor mismatch.
-        if det.signed_off_by and det.signed_off_by.strip() != det.supervisor_label.strip():
+        # Sign-off / supervisor mismatch (after normalising whitespace + case).
+        if det.signed_off_by and _norm_name(det.signed_off_by) != _norm_name(det.supervisor_label):
             errors.append(
                 (
                     det_shot.path,
