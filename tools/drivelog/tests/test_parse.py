@@ -108,6 +108,31 @@ def test_header_timestamp_ignores_ios_status_bar_clock():
     assert ts.hour == 3 and ts.minute == 34  # matched 'Today at 3:34', not '3:42'
 
 
+def test_extract_day_night_handles_merged_equals_total():
+    """Vision sometimes merges '=' with the Total value: '= 00:04'."""
+    from drivelog.parse import _extract_day_night
+    from drivelog.ocr import OcrToken
+
+    # Build tokens that mirror the real IMG_6373 layout: labels on one Y, values
+    # 0.027 below (within the 0.05 tolerance), each value aligned with its label X.
+    def at(text, x_centre, y_top, w=0.10, h=0.02):
+        return OcrToken(
+            text=text, confidence=0.99,
+            x=x_centre - w / 2, y=1.0 - (y_top + h), w=w, h=h,
+        )
+
+    tokens = [
+        at("7 Jun 2026 at 10:30 am", 0.498, 0.081),
+        at("Day", 0.365, 0.127),
+        at("Night", 0.619, 0.127),
+        at("Total", 0.874, 0.129),
+        at("00:04", 0.363, 0.156),
+        at("00:00", 0.630, 0.157),
+        at("= 00:04", 0.819, 0.158, w=0.238),
+    ]
+    assert _extract_day_night(tokens) == (4, 0, 4)
+
+
 def test_extract_day_night_infers_total_from_day_plus_night():
     """If Day and Night parse but Total doesn't, fall back to day+night."""
     from drivelog.parse import _extract_day_night

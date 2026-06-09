@@ -142,7 +142,7 @@ def _extract_signed_off(tokens: list[OcrToken]) -> str | None:
     return None
 
 
-_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
+_TIME_RE = re.compile(r"\b(\d{1,2}):(\d{2})\b")
 
 
 def _extract_day_night(tokens: list[OcrToken]) -> tuple[int, int, int]:
@@ -162,14 +162,14 @@ def _extract_day_night(tokens: list[OcrToken]) -> tuple[int, int, int]:
             continue
         candidates = [
             t for t in tokens
-            if _TIME_RE.match(t.text.strip())
+            if _TIME_RE.search(t.text.strip())
             and t.y_centre > label_tok.y_centre
             and t.y_centre - label_tok.y_centre < 0.05
             and abs(t.x_centre - label_tok.x_centre) < 0.08
         ]
         if candidates:
             candidates.sort(key=lambda t: t.y_centre)
-            m = _TIME_RE.match(candidates[0].text.strip())
+            m = _TIME_RE.search(candidates[0].text.strip())
             results[label_text.lower()] = int(m.group(1)) * 60 + int(m.group(2))
 
     if {"day", "night", "total"}.issubset(results):
