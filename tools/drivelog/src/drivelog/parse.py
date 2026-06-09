@@ -89,23 +89,53 @@ def _extract_signed_off(tokens: list[OcrToken]) -> str | None:
     return None
 
 
+_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
+
+
 def _extract_day_night(tokens: list[OcrToken]) -> tuple[int, int, int]:
-    """Find the 'Day HH:MM + Night HH:MM = Total HH:MM' summary."""
+    """Find the 'Day HH:MM + Night HH:MM = Total HH:MM' summary box.
+
+    Labels and values are on separate visual rows. Prefer spatial lookup
+    (find a HH:MM token below each label in the same column), and fall
+    back to flat-text regex if that fails.
+    """
+    results: dict[str, int] = {}
+    for label_text in ("Day", "Night", "Total"):
+        label_tok = next(
+            (t for t in tokens if t.text.strip().lower() == label_text.lower()),
+            None,
+        )
+        if label_tok is None:
+            continue
+        candidates = [
+            t for t in tokens
+            if _TIME_RE.match(t.text.strip())
+            and t.y_centre > label_tok.y_centre
+            and t.y_centre - label_tok.y_centre < 0.05
+            and abs(t.x_centre - label_tok.x_centre) < 0.08
+        ]
+        if candidates:
+            candidates.sort(key=lambda t: t.y_centre)
+            m = _TIME_RE.match(candidates[0].text.strip())
+            results[label_text.lower()] = int(m.group(1)) * 60 + int(m.group(2))
+
+    if {"day", "night", "total"}.issubset(results):
+        return results["day"], results["night"], results["total"]
+
     text = " ".join(t.text for t in tokens)
-    day = night = total = None
+    fallback: dict[str, int] = {}
     for label, target in (("Day", "day"), ("Night", "night"), ("Total", "total")):
-        m = re.search(rf"{label}\s*(\d{{1,2}}):(\d{{2}})", text)
+        m = re.search(rf"{label}\s+(\d{{1,2}}):(\d{{2}})", text, re.IGNORECASE)
         if m:
-            mins = int(m.group(1)) * 60 + int(m.group(2))
-            if target == "day":
-                day = mins
-            elif target == "night":
-                night = mins
-            else:
-                total = mins
-    if day is None or night is None or total is None:
-        raise ParseError("Could not parse Day/Night/Total summary")
-    return day, night, total
+            fallback[target] = int(m.group(1)) * 60 + int(m.group(2))
+    if {"day", "night", "total"}.issubset(fallback):
+        return fallback["day"], fallback["night"], fallback["total"]
+
+    partial = results or fallback
+    raise ParseError(
+        f"Could not parse Day/Night/Total summary. Partial: {partial}. "
+        f"Try 'drivelog debug <screenshot>' to inspect OCR output."
+    )
 
 
 def parse_detail(tokens: list[OcrToken]) -> TripDetail:

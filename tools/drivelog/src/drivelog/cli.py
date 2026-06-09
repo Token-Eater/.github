@@ -140,6 +140,29 @@ def render(
 
 
 @app.command()
+def debug(
+    image: Path = typer.Argument(..., help="Path to a single screenshot to inspect."),
+) -> None:
+    """Print every OCR token from one screenshot with text, confidence, and position.
+
+    Useful when parse fails: shows exactly what Vision saw so you can tell
+    whether the issue is OCR quality or our spatial assumptions.
+    """
+    from .ocr import ocr_image
+
+    tokens = ocr_image(image)
+    kind = classify(tokens)
+    console.print(f"[bold]Classified as:[/bold] {kind.value}  ({len(tokens)} tokens)")
+    console.print(f"{'Text':<32} {'Conf':>5}  {'x':>5} {'y_top':>6} {'w':>5} {'h':>5}")
+    for t in tokens:
+        y_top = 1.0 - (t.y + t.h)
+        console.print(
+            f"{t.text[:30]:<32} {t.confidence:.2f}  "
+            f"{t.x:.3f} {y_top:.3f} {t.w:.3f} {t.h:.3f}"
+        )
+
+
+@app.command()
 def status(
     root: Path = typer.Option(None, "--root"),
 ) -> None:

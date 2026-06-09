@@ -81,6 +81,30 @@ def test_header_timestamp_parses_full_month_with_at():
     assert ts.hour == 14 and ts.minute == 42
 
 
+def test_extract_day_night_handles_labels_above_values():
+    """Real screenshots put Day/Night/Total labels on one row, values on the next."""
+    from drivelog.parse import _extract_day_night
+
+    # Pad with empty rows so the label-to-value gap is realistically small (<5% of image).
+    pad = [(r, ["."]) for r in range(2, 20)]
+    tokens = _tokens([
+        (0, ["2 May 2026 at 9:31 am"]),
+        (1, ["Km", "Day", "Night", "Total"]),
+        # Values are on the row just after the labels: close in Y.
+    ] + pad)
+    # Replace one padding row with the actual values (close to the label row).
+    tokens = [t for t in tokens if t.text != "."]
+    # Add value tokens close to the label row's Y.
+    label_y_centre = next(t for t in tokens if t.text == "Day").y_centre
+    from drivelog.ocr import OcrToken
+    for i, (text, x) in enumerate([("2", 0.05), ("00:01", 0.17), ("00:00", 0.29), ("00:01", 0.41)]):
+        tokens.append(OcrToken(
+            text=text, confidence=0.99,
+            x=x, y=(1 - label_y_centre) - 0.03 - 0.02, w=0.10, h=0.02,
+        ))
+    assert _extract_day_night(tokens) == (1, 0, 1)
+
+
 def test_parse_detail_extracts_all_fields():
     det = parse_detail(SAMPLE_DETAIL)
     assert det.vehicle == "123ABC"
