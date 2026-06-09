@@ -108,6 +108,25 @@ def test_header_timestamp_ignores_ios_status_bar_clock():
     assert ts.hour == 3 and ts.minute == 34  # matched 'Today at 3:34', not '3:42'
 
 
+def test_extract_day_night_infers_total_from_day_plus_night():
+    """If Day and Night parse but Total doesn't, fall back to day+night."""
+    from drivelog.parse import _extract_day_night
+    from drivelog.ocr import OcrToken
+    pad = [(r, ["."]) for r in range(2, 20)]
+    tokens = _tokens([
+        (0, ["2 May 2026 at 9:31 am"]),
+        (1, ["Km", "Day", "Night"]),
+    ] + pad)
+    tokens = [t for t in tokens if t.text != "."]
+    label_y_centre = next(t for t in tokens if t.text == "Day").y_centre
+    for text, x in [("00:04", 0.17), ("00:00", 0.29)]:
+        tokens.append(OcrToken(
+            text=text, confidence=0.99,
+            x=x, y=(1 - label_y_centre) - 0.03 - 0.02, w=0.10, h=0.02,
+        ))
+    assert _extract_day_night(tokens) == (4, 0, 4)
+
+
 def test_extract_day_night_handles_labels_above_values():
     """Real screenshots put Day/Night/Total labels on one row, values on the next."""
     from drivelog.parse import _extract_day_night

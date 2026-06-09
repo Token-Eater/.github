@@ -184,6 +184,13 @@ def _extract_day_night(tokens: list[OcrToken]) -> tuple[int, int, int]:
     if {"day", "night", "total"}.issubset(fallback):
         return fallback["day"], fallback["night"], fallback["total"]
 
+    # Defensive: if we know Day and Night but missed Total, infer it.
+    # The pair.py sanity check tolerates +/- 1m so this is consistent.
+    combined = {**fallback, **results}
+    if {"day", "night"}.issubset(combined) and "total" not in combined:
+        combined["total"] = combined["day"] + combined["night"]
+        return combined["day"], combined["night"], combined["total"]
+
     partial = results or fallback
     raise ParseError(
         f"Could not parse Day/Night/Total summary. Partial: {partial}. "
