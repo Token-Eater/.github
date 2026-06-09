@@ -67,6 +67,20 @@ def test_header_timestamp_parses():
     assert ts.hour == 9 and ts.minute == 31
 
 
+def test_header_timestamp_parses_short_month_no_at_no_space():
+    """Vision sometimes drops 'at' and the space before PM; some locales use 'Jun' not 'June'."""
+    tokens = _tokens([(0, ["6 Jun 2026 2:42PM"])])
+    ts = parse_header_timestamp(tokens)
+    assert ts.year == 2026 and ts.month == 6 and ts.day == 6
+    assert ts.hour == 14 and ts.minute == 42
+
+
+def test_header_timestamp_parses_full_month_with_at():
+    tokens = _tokens([(0, ["6 June 2026 at 2:42 PM"])])
+    ts = parse_header_timestamp(tokens)
+    assert ts.hour == 14 and ts.minute == 42
+
+
 def test_parse_detail_extracts_all_fields():
     det = parse_detail(SAMPLE_DETAIL)
     assert det.vehicle == "123ABC"

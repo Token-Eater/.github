@@ -34,7 +34,7 @@ DETAIL_LABELS = (
 
 
 _HEADER_RE = re.compile(
-    r"(\d{1,2}\s+\w+\s+\d{4})\s+at\s+(\d{1,2}:\d{2}\s*(?:am|pm))",
+    r"(\d{1,2}\s+\w+\s+\d{4})\s+(?:at\s+)?(\d{1,2}:\d{2}\s*(?:am|pm))",
     re.IGNORECASE,
 )
 _DURATION_RE = re.compile(r"\b(\d{1,2}):(\d{2})\b")
@@ -56,10 +56,13 @@ def parse_header_timestamp(tokens: list[OcrToken]) -> datetime:
 
 
 def _parse_datetime(date_str: str, time_str: str) -> datetime:
-    return datetime.strptime(
-        f"{date_str} {time_str.replace(' ', '').upper()}",
-        "%d %B %Y %I:%M%p",
-    ).replace(tzinfo=TZ)
+    cleaned = f"{date_str} {time_str.replace(' ', '').upper()}"
+    for fmt in ("%d %B %Y %I:%M%p", "%d %b %Y %I:%M%p"):
+        try:
+            return datetime.strptime(cleaned, fmt).replace(tzinfo=TZ)
+        except ValueError:
+            continue
+    raise ParseError(f"Could not parse datetime from {date_str!r} {time_str!r}")
 
 
 def _extract_rows(tokens: list[OcrToken]) -> dict[str, str]:
